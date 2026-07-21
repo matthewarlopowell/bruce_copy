@@ -45,7 +45,11 @@ y_filtered = bruce.data.convolve_1d(x,y_filtered, bin_size=2)
 time_trial, DeltaL = bruce.template_match.template_match_lightcurve(x,y,ye,y_filtered,**transit_parameters_ )
 
 
-pvalues, heights = bruce.template_match.get_delta_loglike_height_from_fap(df=3)
+# Calibrated per-epoch heights:
+_, rho2 = bruce.template_match.template_rho2(x, ye, y_filtered,
+                                             time_trial=time_trial,
+                                             **transit_parameters_)
+pvalues, heights = bruce.template_match.get_delta_loglike_height_from_fap(rho2=rho2)
 
 peaks, meta = find_peaks(DeltaL, height=heights[2], distance=100)
 
@@ -94,11 +98,6 @@ t_zeros = [transit_parameters['t_zero'] + transit_parameters['period']*i for i i
 # plt.show()
 
 
-
-
-
-
-
 for i in range(len(t_zeros)):
     ax[0].plot(t_zeros[i], 1.1, marker=7, color='b')
 
@@ -111,9 +110,9 @@ for i in range(len(peaks)):
             verticalalignment='bottom', horizontalalignment='center', bbox=props)
 ax[1].set(xlabel='Time [day]', ylabel=r'$\Delta \log \mathcal{L}$', ylim=(0,72),  xlim=(time_trial[0]-3, time_trial[-1]+3))
 
-ax[1].axhline(heights[0], c='k', ls='dashed', lw=1, label='1%')
-ax[1].axhline(heights[1], c='k', ls='dotted', lw=1, label='0.1%')
-ax[1].axhline(heights[2], c='k', ls='dashdot', lw=1, label='0.01%')
+ax[1].plot(time_trial, heights[0], c='k', ls='dashed', lw=1, label='1%')
+ax[1].plot(time_trial, heights[1], c='k', ls='dotted', lw=1, label='0.1%')
+ax[1].plot(time_trial, heights[2], c='k', ls='dashdot', lw=1, label='0.01%')
 ax[1].legend(fontsize=7)
 
 # Now lets do the phase dispersion
@@ -125,7 +124,6 @@ ax[2].plot(transit_parameters['period'], 5, marker=7, color='r')
 for i in range(2,22) : ax[2].plot(transit_parameters['period']/i, 6 if (((i%2)==0) and (transit_parameters['period']/i)<2) else 5, marker=7, color='b')
 
 
-
 ax[2].set(ylabel = r'PD', xlabel='Period [day]')
 ax[2].set_xticks([1,10,100], ['1','10','100'])
 ax[2].set_yticks([1,10], ['1','10'])
@@ -134,7 +132,7 @@ def move_axis(ax, dy, left=None):
 
     pos = ax.get_position()
     pos.y0 = pos.y0 +dy     # for example 0.2, choose your value
-    pos.y1 = pos.y1 +dy       # for example 0.2, choose your value
+    pos.y1 = pos.y1 +dy     # for example 0.2, choose your value
     if left is not None:
         pos.x0 = left[0]
         pos.x1 = left[1]
@@ -159,7 +157,7 @@ move_axis(ax[7], dy=dy, left = left2)
 move_axis(ax[8], dy=dy, left = left3)
 
 ylim=[0.95,1.05]
-for i in range(len(peaks))[:]:
+for i in range(min(len(peaks), len(ax) - 3)):
     width = 1.5
     mask = (x>(time_trial[peaks[i]]-width)) & (x<(time_trial[peaks[i]]+width))
     #ax[i+3].scatter(x[mask], y[mask]/y_filtered[mask], c='k', s=1)
@@ -191,7 +189,6 @@ ax[7].set_yticks([])
 
 plt.savefig('phase_dispersion_example.pdf')
 plt.close()
-
 
 
 # from tqdm import tqdm 

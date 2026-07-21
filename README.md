@@ -71,8 +71,18 @@ time_trial, DeltaL = bruce.template_match.template_match_lightcurve(t, f, fe, w,
 By simple passing the data, along with parameters used to fit a single transit (period, R1/a, R2/R1, and incl) you can search each possible epoch for signs of a transit. In return, you get time_trial (the epochs we try) and DeltaL, the delta log-likliehood of a match at this position. Epochs where DeltaL > 0 mean the transit model is favoured over a null model. You can then look for peaks in DeltaL which are significant (which you can define) like this.
 
 ```python
-# Get the FAP heights for 1%, 0.1%, and 0.001% 
-probabilities, heights = bruce.template_match.get_delta_loglike_height_from_fap(p_value=[0.01,0.001,0.0001], df=3) 
+# Get calibrated per-epoch heights for FAPs of 1%, 0.1%, and 0.01%.  The
+# white-noise null of DeltaL is N(-rho^2, (2 rho)^2)
+# so the valid heights vary with the per-epoch template norm rho^2, which
+# template_rho2 computes via one extra self-match pass (reusable across
+# light curves with the same template and errors).
+_, rho2 = bruce.template_match.template_rho2(t, fe, w, period=period,
+        radius_1=0.03, k=0.05, incl=np.pi/2,
+        c=0.7, alpha=0.4,
+        cadence=5, noversample=10,
+        ld_law=-2, accurate_tp=1,
+        time_trial=time_trial)
+probabilities, heights = bruce.template_match.get_delta_loglike_height_from_fap(p_value=[0.01,0.001,0.0001], rho2=rho2)
 
 from scipy.signal import find_peaks
 peaks, meta = find_peaks(DeltaL, height=heights[2])

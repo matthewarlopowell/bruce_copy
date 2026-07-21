@@ -6,7 +6,6 @@ from astropy.stats import sigma_clip
 from astropy.time import Time
 from scipy.signal import find_peaks
 
-
 from matplotlib import pyplot as plt
 from matplotlib.axes import Axes
 from matplotlib import gridspec
@@ -116,7 +115,6 @@ def parse_args():
                         help='Distance between peaks [same units as time.]',
                         default=100, type=float) 
 
-
     # Normalisation
     parser.add_argument('-v', 
                         '--normalisation_method',
@@ -137,14 +135,17 @@ def parse_args():
 
     # Period search
     parser.add_argument('--period_search', action="store_true", default=False)
+
     parser.add_argument('-y', 
                         '--period_min',
                         help='The minimum period to search [default is 1 day].',
                         default=1, type=float) 
+
     parser.add_argument('-z', 
                         '--period_max',
                         help='The maximum period to search [default is 100 days].',
-                        default=100, type=float)   
+                        default=100, type=float)  
+
     parser.add_argument('-aa', 
                         '--period_samples',
                         help='The number of period samples [default is 100,000 samples between period_min and period_max].',
@@ -156,15 +157,16 @@ def parse_args():
                         type=int,
                         default=[])  
 
-
     parser.add_argument('-ac', 
                         '--t_zero_ref',
                         help='The epoch of a reference system',
                         default=None, type=float) 
+
     parser.add_argument('-ad', 
                         '--period_ref',
                         help='The period of a refernce system.',
                         default=None, type=float)  
+
     return parser.parse_args()
 
 
@@ -185,6 +187,7 @@ def load_data(filename):
             return time, flux, flux_err
         except : return None,None,None
 
+
     def load_ngts(filename):
         try : 
             t = Table.read(filename)
@@ -198,6 +201,7 @@ def load_data(filename):
             return time, flux, flux_err
         except : return None,None,None
 
+
     def load_wasp(filename):
         try : 
             t = Table.read(filename)
@@ -209,11 +213,13 @@ def load_data(filename):
             return time, flux, flux_err
         except : return None,None,None 
 
+
     def load_ascii(filename):
         # Now lets try plain ascii 
         try :return  np.loadtxt(filename).T
         except : return None,None,None 
             
+
     time, flux, flux_err = None,None,None
     if time is None :     time, flux, flux_err =load_quicklook(filename)
     if time is None :     time, flux, flux_err =load_ngts(filename)
@@ -292,11 +298,23 @@ if __name__=='__main__':
             jitter=0., offset=0,
             time_step=None, time_trial=None)
     
-    # Lets get the heights
-    probabilities, heights = bruce.template_match.get_delta_loglike_height_from_fap(p_value=args.fap_levels, df=3)
-    
-    # Lets get the peaks by choosign the highest probability
-    peaks, meta = find_peaks(DeltaL, height=np.max(heights), distance=args.distance)
+    # Get the per-epoch template norm (self-match) and calibrated heights.
+    # The white-noise null of DeltaL is N(-rho^2, (2 rho)^2), so the valid
+    # heights are per-epoch curves rather than chi-squared constants.
+    _, rho2 = bruce.template_match.template_rho2(time, flux_err, wt, period = args.period,
+            radius_1=args.radius_1, k = args.k, incl=np.arccos(args.radius_1*args.b),
+            e=args.e, w = args.w,
+            c = args.ldc_1, alpha =args.ldc_2,
+            cadence=0, noversample=10,
+            light_3=args.light_3,
+            ld_law = -2,
+            accurate_tp=1,
+            jitter=0., offset=0,
+            time_step=None, time_trial=time_trial)
+    probabilities, heights = bruce.template_match.get_delta_loglike_height_from_fap(p_value=args.fap_levels, rho2=rho2)
+
+    # Lets get the peaks at the strictest requested false-alarm probability
+    peaks, meta = find_peaks(DeltaL, height=heights[np.argmin(probabilities)], distance=args.distance)
     print('Found {:,} peaks'.format(len(peaks)))
     if len(peaks) > args.keep:
         print('Trimming to {:,} peaks'.format(args.keep))
@@ -309,7 +327,7 @@ if __name__=='__main__':
     props = dict(boxstyle='round', facecolor='wheat', alpha=1)
     for i in range(len(probabilities)):
         ls = ['dashed', 'dotted', 'dashdot', 'solid'][i]
-        ax.axhline(heights[i], c='k', ls=ls, label='FAP={:.2f}%'.format(100*probabilities[i]))
+        ax.plot(time_trial-t0, heights[i], c='k', lw=0.8, ls=ls, label='FAP={:.2f}%'.format(100*probabilities[i]))
     for i in range(len(peaks)):
         ax.text(time_trial[peaks[i]]-t0, DeltaL[peaks[i]]+label_offset, str(i+1), fontsize=10,
             verticalalignment='bottom', horizontalalignment='center', bbox=props)
@@ -319,7 +337,6 @@ if __name__=='__main__':
     plt.tight_layout()
     plt.savefig('{:}/{:}_DeltaL.png'.format(args.output_dir,args.name), dpi=200)
     plt.close()
-
 
         
     # Now its time to plot the model
@@ -342,7 +359,6 @@ if __name__=='__main__':
         ax.text(time_trial[peaks[i]]-t0, np.interp(time_trial[peaks[i]], time, wt) + (np.max(wt) - np.min(wt)), str(i+1), fontsize=10,
             verticalalignment='bottom', horizontalalignment='center', bbox=props)
         
-
     plt.tight_layout()
     plt.savefig('{:}/{:}_normalisation.png'.format(args.output_dir,args.name), dpi=200)
     ax.set(ylim=(median-1*maxmin, median+1*maxmin))
@@ -352,7 +368,6 @@ if __name__=='__main__':
     # Now lets plot the peaks
     if len(peaks)==0:
         exit()
-
 
 
     ncols = 5
@@ -444,7 +459,7 @@ if __name__=='__main__':
     print('-----------------')
     print('False alarm levels')
     for i in range(len(heights)):
-        print('   {:.3f}% -> Delta L = {:.1f}'.format(100*probabilities[i], heights[i]))
+        print('   {:.3f}% -> Delta L (median height over epochs) = {:.1f}'.format(100*probabilities[i], float(np.nanmedian(heights[i]))))
     print('-----------------')
     for i in range(len(peaks)):
         print('[IDX {:<3} P{:<3}] Delta L = {:<10.0f}  Epoch {:<10.5f} [{:}]'.format(i,i+1, DeltaL[peaks[i]], time_trial[peaks[i]], Time(time_trial[peaks[i]], format='jd').datetime))
@@ -471,7 +486,7 @@ if __name__=='__main__':
         props = dict(boxstyle='round', facecolor='wheat', alpha=1)
         for i in range(len(probabilities)):
             ls = ['dashed', 'dotted', 'dashdot', 'solid'][i]
-            ax.axhline(heights[i], c='k', ls=ls, label='FAP={:.2f}%'.format(100*probabilities[i]))
+            ax.plot(time_trial-t0, heights[i], c='k', lw=0.8, ls=ls, label='FAP={:.2f}%'.format(100*probabilities[i]))
         for i in range(len(peaks)):
             ax.text(time_trial[peaks[i]]-t0, DeltaL[peaks[i]]+label_offset, str(i+1), fontsize=10,
                 verticalalignment='bottom', horizontalalignment='center', bbox=props)
@@ -575,3 +590,4 @@ if __name__=='__main__':
         plt.close()
 
         print('Best period is {:.5f}'.format(periods[np.argmin(dispersion)]))
+        
