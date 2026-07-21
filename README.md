@@ -76,6 +76,7 @@ By simple passing the data, along with parameters used to fit a single transit (
 # so the valid heights vary with the per-epoch template norm rho^2, which
 # template_rho2 computes via one extra self-match pass (reusable across
 # light curves with the same template and errors).
+
 _, rho2 = bruce.template_match.template_rho2(t, fe, w, period=period,
         radius_1=0.03, k=0.05, incl=np.pi/2,
         c=0.7, alpha=0.4,
