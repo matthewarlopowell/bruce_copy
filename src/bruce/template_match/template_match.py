@@ -117,24 +117,36 @@ def template_match_snr(time, flux, flux_err, normalisation_model,
     ``whiten=True`` divides z by its robust (MAD) scatter: an estimated
     normalisation model (e.g. a median filter) absorbs part of the noise and
     leaves the raw z slightly narrower than N(0,1); transits are sparse so
-    the MAD is insensitive to them.  Pass a precomputed ``rho2`` (from
-    ``template_rho2``) to skip the self-match pass.
+    the MAD is insensitive to them.  The scatter is estimated from the
+    interior trial epochs only (rho2 above half its median): edge-affected
+    epochs carry a deflated z and would bias the scale low.  Pass a
+    precomputed ``rho2`` (from ``template_rho2``) to skip the self-match
+    pass.
     """
     if isinstance(kwargs.get("radius_1"), np.ndarray):
         raise ValueError("template_match_snr supports the single-template "
                          "path only (scalar radius_1, k, incl)")
+    kwargs = dict(kwargs)
+    time_trial_in = kwargs.pop("time_trial", None)
     time_trial, S = template_match_lightcurve(
-        time, flux, flux_err, normalisation_model, **kwargs)
+        time, flux, flux_err, normalisation_model,
+        time_trial=time_trial_in, **kwargs)
     if rho2 is None:
         _, rho2 = template_rho2(time, flux_err, normalisation_model,
                                 time_trial=time_trial, **kwargs)
     S = np.asarray(S, dtype=float)
     rho2 = np.asarray(rho2, dtype=float)
     safe = np.maximum(rho2, 1e-12)
-    z = np.where(rho2 > 1e-9, (S + rho2) / (2.0 * np.sqrt(safe)), 0.0)
+    good = rho2 > 1e-9
+    z = np.where(good, (S + rho2) / (2.0 * np.sqrt(safe)), 0.0)
     if whiten:
-        finite = z[np.isfinite(z)]
-        scale = 1.4826 * np.median(np.abs(finite - np.median(finite)))
+        valid = good & np.isfinite(z)
+        if good.any():
+            valid &= rho2 > 0.5 * np.median(rho2[good])
+        pool = z[valid]
+        if pool.size < 10:
+            pool = z[np.isfinite(z)]
+        scale = 1.4826 * np.median(np.abs(pool - np.median(pool)))
         if np.isfinite(scale) and scale > 0.0:
             z = z / scale
     return time_trial, z, S, rho2
