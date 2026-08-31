@@ -1246,7 +1246,7 @@ static PyMethodDef bruce_c_methods[] = {
     {"rv1_loglike", rv1_loglike, METH_VARARGS, "Compute the radial velocity log-likliehood given an RV dataset."}, 
     {"rv2", rv2, METH_VARARGS, "The radial velocity of star 1 and star2 given a set of parameters."},  
     {"rv2_loglike", rv2_loglike, METH_VARARGS, "Compute the radial velocity log-likliehood given an RV dataset."}, 
-    {"check_proximity_of_timestamps", check_proximity_of_timestamps, METH_VARARGS, "Check the timestamps are within 0.5*width of an observation."},
+    {"check_proximity_of_timestamps", check_proximity_of_timestamps, METH_VARARGS, "Keep trial epochs with any observation within +/- width (full width, not 0.5*width)."},
     {"template_match_reduce", template_match_reduce, METH_VARARGS, "Template match a lighcurve."},
     {"phase_dispersion", phase_dispersion, METH_VARARGS, "Calculate the dispersion."},
     {"template_match_batch_reduce", template_match_batch_reduce, METH_VARARGS, "Template match batch [radius_1, k, incl]."},
