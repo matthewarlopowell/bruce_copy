@@ -86,6 +86,11 @@ _, rho2 = bruce.template_match.template_rho2(t, fe, w, period=period,
         time_trial=time_trial)
 probabilities, heights = bruce.template_match.get_delta_loglike_height_from_fap(p_value=[0.01,0.001,0.0001], rho2=rho2)
 
+# For real survey data a local FAP near 1e-9 (z ~ 6) is recommended --
+# non-Gaussian systematics populate the z ~ 5-6 band.  Trial epochs near
+# data edges/gaps can optionally be dropped with
+# bruce.template_match.edge_epoch_mask(time_trial, t, width) (off by default).
+
 from scipy.signal import find_peaks
 peaks, meta = find_peaks(DeltaL, height=heights[2])
 ```

@@ -177,8 +177,13 @@ def template_match_snr(time, flux, flux_err, normalisation_model,
     return time_trial, z, S, rho2
 
 
-def get_snr_height_from_fap(p_value=(1e-2, 1e-3, 1e-4), n_independent=1):
+def get_snr_height_from_fap(p_value=(1e-2, 1e-3, 1e-4, 1e-9), n_independent=1):
     """One-sided N(0,1) heights on the matched-filter S/N z.
+
+    The last default entry, 1e-9 (z_p ~ 6.00), is the recommended local
+    FAP for real survey data: non-Gaussian systematics populate the
+    z ~ 5-6 band, and 1e-9 sits just above it with little sensitivity
+    cost.
 
     With the default ``n_independent=1`` the height is LOCAL (per trial
     epoch) -- threshold there and the expected number of false peaks in a
@@ -225,6 +230,37 @@ def effective_independent_trials(time_trial, width, decorrelation_factor=5.0):
         return 1.0
     step = float(np.median(np.diff(time_trial)))
     return max(1.0, decorrelation_factor * time_trial.size * step / float(width))
+
+
+def segment_edge_times(time, gap_days=0.2):
+    """Start and end times of every contiguous data segment (the series
+    ends, plus both sides of any gap longer than ``gap_days``)."""
+    t = np.sort(np.asarray(time, dtype=float))
+    if t.size == 0:
+        return np.array([])
+    breaks = np.flatnonzero(np.diff(t) > gap_days)
+    starts = np.concatenate([[t[0]], t[breaks + 1]])
+    ends = np.concatenate([t[breaks], [t[-1]]])
+    return np.concatenate([starts, ends])
+
+
+def edge_epoch_mask(time_trial, time, width, mask_widths=1.0, gap_days=0.2):
+    """True for trial epochs at least ``mask_widths`` transit widths from
+    every data-segment edge (series ends and gaps > ``gap_days``).
+
+    Optional post-processing for peak cataloguing; nothing applies it by
+    default.  An estimated normalisation model is least constrained near
+    segment edges, so edge epochs can carry spurious peaks -- but masking
+    them costs sensitivity to transits partially covered at the edges,
+    where genuine events do occur on real data.  ``mask_widths`` sets the
+    aggressiveness (1.0 masks one full width from every edge).
+    """
+    time_trial = np.asarray(time_trial, dtype=float)
+    edges = segment_edge_times(time, gap_days)
+    if edges.size == 0:
+        return np.ones(time_trial.size, dtype=bool)
+    distance = np.min(np.abs(time_trial[:, None] - edges[None, :]), axis=1)
+    return distance >= float(mask_widths) * float(width)
 
 
 def lag1_correlation(z):
@@ -278,8 +314,8 @@ def snr_threshold_global_upcross(fap, n_grid, r1):
     return brentq(objective, 0.5, 12.0, xtol=1e-6)
 
 
-def get_delta_loglike_height_from_fap(p_value=(0.01, 0.001, 0.0001), df=None,
-                                      rho2=None, n_independent=1):
+def get_delta_loglike_height_from_fap(p_value=(0.01, 0.001, 0.0001, 1e-9),
+                                      df=None, rho2=None, n_independent=1):
     """Detection heights on BRUCE's 2dlnL statistic for the requested FAPs.
 
     Because the null of S is N(-rho^2, (2 rho)^2), a constant height cannot

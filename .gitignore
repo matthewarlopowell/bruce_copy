@@ -1,9 +1,3 @@
-tests/
-build/
-dist/ 
-# Ignore everything under examples/duotransits
-examples/duotransits/*
-
-# But don't ignore Jupyter notebooks
-!examples/duotransits/*.ipynb
-!examples/duotransits/duos.csv
+__pycache__/
+*.pyc
+.idea/
