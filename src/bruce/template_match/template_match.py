@@ -96,9 +96,13 @@ def template_rho2(time, flux_err, normalisation_model, time_trial=None, **kwargs
     """Per-epoch template norm rho^2 via the self-match identity.
 
     Matching the normalisation model against itself leaves zero residual for
-    the null term, so S_self = -rho^2 exactly.  rho^2 depends only on the
-    template, the errors, and the time sampling -- not on the flux -- so it
-    can be computed once per (template, errors) combination and reused.
+    the null term, so S_self = -rho^2 exactly.  rho^2 = sum w_n^2 (1-m_n)^2
+    / sigma_n^2 depends on the template, the stated errors, the time
+    sampling, AND the normalisation model -- not on the flux directly -- so
+    it can only be reused across scans that share all four.  A flux-derived
+    normalisation model (e.g. a median filter) differs per light curve, in
+    which case rho^2 must be recomputed (though for normalised flux with
+    w ~ 1 the difference is at the 1e-3 level).
     """
     normalisation_model = np.asarray(normalisation_model, dtype=np.float64)
     time_trial, s_self = template_match_lightcurve(
@@ -119,9 +123,11 @@ def template_match_snr(time, flux, flux_err, normalisation_model,
     leaves the raw z slightly narrower than N(0,1); transits are sparse so
     the MAD is insensitive to them.  The scatter is estimated from the
     interior trial epochs only (rho2 above half its median): edge-affected
-    epochs carry a deflated z and would bias the scale low.  Pass a
-    precomputed ``rho2`` (from ``template_rho2``) to skip the self-match
-    pass.
+    epochs carry a deflated z and would bias the scale low.  The scale needs
+    several independent samples and the z process decorrelates over about
+    one template width, so scans spanning fewer than 3 widths skip the
+    whitening with a warning (the raw z is returned).  Pass a precomputed
+    ``rho2`` (from ``template_rho2``) to skip the self-match pass.
     """
     if isinstance(kwargs.get("radius_1"), np.ndarray):
         raise ValueError("template_match_snr supports the single-template "
@@ -140,15 +146,34 @@ def template_match_snr(time, flux, flux_err, normalisation_model,
     good = rho2 > 1e-9
     z = np.where(good, (S + rho2) / (2.0 * np.sqrt(safe)), 0.0)
     if whiten:
-        valid = good & np.isfinite(z)
-        if good.any():
-            valid &= rho2 > 0.5 * np.median(rho2[good])
-        pool = z[valid]
-        if pool.size < 10:
-            pool = z[np.isfinite(z)]
-        scale = 1.4826 * np.median(np.abs(pool - np.median(pool)))
-        if np.isfinite(scale) and scale > 0.0:
-            z = z / scale
+        # Neighbouring grid epochs are strongly correlated (step ~ W/20), so
+        # a pool that is large in epochs can still hold ~no independent
+        # samples: on a scan of ~1 template width the MAD measures the
+        # within-correlation-length wiggle and inflates z arbitrarily.
+        radius_1_ = float(kwargs.get("radius_1", 0.2))
+        b_ = abs(np.cos(float(kwargs.get("incl", np.pi / 2)))) / max(radius_1_, 1e-9)
+        try:
+            width_ = float(transit_width(radius_1_, float(kwargs.get("k", 0.2)),
+                                         b_, period=float(kwargs.get("period", 1.))))
+        except Exception:
+            width_ = 0.0
+        span_ = float(time_trial.max() - time_trial.min()) if time_trial.size else 0.0
+        if np.isfinite(width_) and width_ > 0.0 and span_ < 3.0 * width_:
+            warnings.warn(
+                "scan spans only %.1f template widths; the per-scan MAD "
+                "scale needs several independent samples (z decorrelates "
+                "over ~1 width), so whitening is skipped and the raw z is "
+                "returned" % (span_ / width_), stacklevel=2)
+        else:
+            valid = good & np.isfinite(z)
+            if good.any():
+                valid &= rho2 > 0.5 * np.median(rho2[good])
+            pool = z[valid]
+            if pool.size < 10:
+                pool = z[np.isfinite(z)]
+            scale = 1.4826 * np.median(np.abs(pool - np.median(pool)))
+            if np.isfinite(scale) and scale > 0.0:
+                z = z / scale
     return time_trial, z, S, rho2
 
 
@@ -209,7 +234,9 @@ def lag1_correlation(z):
     good = np.isfinite(z[:-1]) & np.isfinite(z[1:])
     if good.sum() < 10:
         return 0.0
-    return float(np.corrcoef(z[:-1][good], z[1:][good])[0, 1])
+    with np.errstate(invalid="ignore", divide="ignore"):
+        r = float(np.corrcoef(z[:-1][good], z[1:][good])[0, 1])
+    return r if np.isfinite(r) else 0.0
 
 
 def _bvn_survival_equal(u, r):
@@ -244,9 +271,11 @@ def snr_threshold_global_upcross(fap, n_grid, r1):
 
     def objective(u):
         expected = stats.norm.sf(u) + (n_grid - 1) * upcrossing_probability(u, r1)
-        return 1.0 - np.exp(-expected) - fap
+        # -expm1(-E) = 1 - exp(-E) without cancellation: 1.0 - np.exp(-E)
+        # rounds to 0 for E < ~1e-16 and the far tail would be lost.
+        return -np.expm1(-expected) - fap
 
-    return brentq(objective, 0.5, 9.0, xtol=1e-6)
+    return brentq(objective, 0.5, 12.0, xtol=1e-6)
 
 
 def get_delta_loglike_height_from_fap(p_value=(0.01, 0.001, 0.0001), df=None,
@@ -263,6 +292,11 @@ def get_delta_loglike_height_from_fap(p_value=(0.01, 0.001, 0.0001), df=None,
     can be given directly to ``scipy.signal.find_peaks(S, height=row)``.
     ``S > height_j`` is algebraically identical to ``z > z_p``.
     ``n_independent`` applies a Sidak correction for whole-scan FAPs.
+    Epochs with ``rho2 <= 0`` (no data within the transit span -- possible
+    next to gaps wider than the template, since the proximity mask keeps
+    epochs with data within a FULL width) get ``height = +inf``: S = 0
+    exactly there, so a finite height of 0 would let find_peaks flag pure
+    noise as a detection.
 
     The legacy chi-squared quantile (``df`` given, no ``rho2``) is retained
     for backwards compatibility only: it is statistically invalid for this
@@ -281,9 +315,11 @@ def get_delta_loglike_height_from_fap(p_value=(0.01, 0.001, 0.0001), df=None,
             "with get_snr_height_from_fap.", DeprecationWarning, stacklevel=2)
         return p_value, stats.chi2.ppf(1 - np.array(p_value), df)
     p, z_p = get_snr_height_from_fap(p_value, n_independent)
-    rho2 = np.asarray(rho2, dtype=float)
+    rho2 = np.atleast_1d(np.asarray(rho2, dtype=float))
     rho = np.sqrt(np.maximum(rho2, 0.0))
-    return p, 2.0 * rho[None, :] * z_p[:, None] - rho2[None, :]
+    heights = 2.0 * rho[None, :] * z_p[:, None] - rho2[None, :]
+    heights[:, rho2 <= 0.0] = np.inf
+    return p, heights
 
 
 def phase_disperison(time_trial, peaks, time, flux, flux_err,

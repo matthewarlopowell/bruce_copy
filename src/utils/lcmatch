@@ -590,4 +590,3 @@ if __name__=='__main__':
         plt.close()
 
         print('Best period is {:.5f}'.format(periods[np.argmin(dispersion)]))
-        
