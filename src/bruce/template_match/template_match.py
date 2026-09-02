@@ -293,10 +293,10 @@ def get_delta_loglike_height_from_fap(p_value=(0.01, 0.001, 0.0001), df=None,
     ``S > height_j`` is algebraically identical to ``z > z_p``.
     ``n_independent`` applies a Sidak correction for whole-scan FAPs.
     Epochs with ``rho2 <= 0`` (no data within the transit span -- possible
-    next to gaps wider than the template, since the proximity mask keeps
-    epochs with data within a FULL width) get ``height = +inf``: S = 0
-    exactly there, so a finite height of 0 would let find_peaks flag pure
-    noise as a detection.
+    when a caller supplies an explicit ``time_trial`` extending past the
+    data or across wide gaps) get ``height = +inf``: S = 0 exactly there,
+    so a finite height of 0 would let find_peaks flag pure noise as a
+    detection.
 
     The legacy chi-squared quantile (``df`` given, no ``rho2``) is retained
     for backwards compatibility only: it is statistically invalid for this

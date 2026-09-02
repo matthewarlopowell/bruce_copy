@@ -751,13 +751,16 @@ double _lc (const double time,
 void check_proximity_of_timestamps(const double *x_trial, const double *x_ref, const int x_ref_size, const double width,
                                     int * mask)
 {
+    /* Viable epochs have a datum within half a transit width: the template
+       only accumulates data at |dt| < width/2, so epochs further out score
+       S = 0 with rho2 = 0 (no test possible). */
     #pragma omp parallel for
     for (int gid=0; gid < x_ref_size; gid++)
     {
         mask[gid] = 0;
         for (int i=0; i<x_ref_size; i++)
         {
-            if (fabs(x_trial[gid] - x_ref[i]) < width) 
+            if (fabs(x_trial[gid] - x_ref[i]) < 0.5 * width)
             {
                 mask[gid] = 1;
                 break;
@@ -1152,13 +1155,14 @@ void rv2_c(
 
 void check_proximity_of_timestamps_fast(const double *x_trial, const double *x_ref, const int x_trial_size, const int x_size, const double width, _Bool * mask)
 {
+    /* Same half-width viability rule as check_proximity_of_timestamps. */
     #pragma omp parallel for
     for (int gid=0; gid < x_trial_size; gid++)
     {
         mask[gid] = 0;
         for (int i=0; i<x_size; i++)
         {
-            if (fabs(x_trial[gid] - x_ref[i]) < width) 
+            if (fabs(x_trial[gid] - x_ref[i]) < 0.5 * width)
             {
                 mask[gid] = 1;
                 break;
