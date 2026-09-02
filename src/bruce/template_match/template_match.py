@@ -171,7 +171,7 @@ def get_snr_height_from_fap(p_value=(1e-2, 1e-3, 1e-4), n_independent=1):
 
         n = effective_independent_trials(time_trial, width)
         _, (z_p,) = get_snr_height_from_fap([1e-4], n_independent=n)
-        # z_p ~ 4.1, versus 3.72 for the local 1e-4
+        # z_p ~ 5.1, versus 3.72 for the local 1e-4
 
     ``snr_threshold_global_upcross`` gives a sharper analytic threshold in
     the far tail; Monte Carlo remains the gold standard for
@@ -187,7 +187,7 @@ def effective_independent_trials(time_trial, width, decorrelation_factor=5.0):
 
     Neighbouring trial epochs share in-transit points, so the scan carries
     roughly one independent test per correlation length of the z process.
-    Monte Carlo on the W/20 grid (20,000 white-noise scans, 27 d at 10-min
+    Monte Carlo on the W/20 grid (2,000 white-noise scans, 27 d at 10-min
     cadence, 6 h template; corroborated across scan durations of 6-54 d
     and template widths of 2-24 h) measures 4.4-5.3 independent tests per
     width at moderate significance, hence the default factor of 5.  This is a
