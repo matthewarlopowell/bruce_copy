@@ -110,6 +110,11 @@ Its worth noting that the quality of your results can be pretty dependent on the
 <img src="images/template_match.png" width="80%" alt="Template matching"/>
 
 ------------------
+A complete search pipeline built on these functions (download, running-median
+normalisation, template width fit, calibrated scan, peak catalogue, per-peak
+depth fit, plots) is in `examples/template_matching/zpipeline.py`; edit its
+USER INPUTS block for your target and run it.
+
 ## Data processing
 
 We provide a small few packages to help process data. The first is  to efficiently bin data given a bin width. By making a call like this,
