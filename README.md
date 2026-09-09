@@ -86,9 +86,10 @@ _, rho2 = bruce.template_match.template_rho2(t, fe, w, period=period,
         time_trial=time_trial)
 probabilities, heights = bruce.template_match.get_delta_loglike_height_from_fap(p_value=[0.01,0.001,0.0001], rho2=rho2)
 
-# For real survey data a local FAP near 1e-9 (z ~ 6) is recommended --
-# non-Gaussian systematics populate the z ~ 5-6 band.  Trial epochs near
-# data edges/gaps can optionally be dropped with
+# Recommended defaults for real survey data: a local FAP of 1e-9 (z ~ 6;
+# non-Gaussian systematics populate the z ~ 5-6 band) and the normalisation
+# window of five transit widths given by bruce.data.normalisation_model
+# (below).  Trial epochs near data edges/gaps can optionally be dropped with
 # bruce.template_match.edge_epoch_mask(time_trial, t, width) (off by default).
 
 from scipy.signal import find_peaks
@@ -103,17 +104,19 @@ period_best = periods[np.argmin(dispersion)]
 
 The normalisation model, w, can be whatever you want, but we provide a median filter and a convolution filter to use if you so wish. 
 ```python
-w = bruce.data.median_filter(t,f, 0.2)
-w = bruce.data.convolve_1d(t,w,0.2) # Should you wish to smooth the output
+w = bruce.data.normalisation_model(t, f, width=width)   # running median + boxcar over five transit widths (floor 0.2 d): the default
+w = bruce.data.normalisation_model(t, f, window=1.0)    # or fix the length in days
 ```
-Its worth noting that the quality of your results can be pretty dependent on the normalisation model, but iof you get it right, the result can be pretty cool.
+The window of five transit widths is the default of the search pipeline and of the paper's simulations: keep it at three transit widths or more, so that in-transit points never dominate the median, and shorter than the star's variability timescale. The median filter uses at most 1024 points per window (a warning is issued; bin 2-min data or shorten the window). Its worth noting that the quality of your results can be pretty dependent on the normalisation model, but if you get it right, the result can be pretty cool.
 <img src="images/template_match.png" width="80%" alt="Template matching"/>
 
 ------------------
 A complete search pipeline built on these functions (download, running-median
 normalisation, template width fit, calibrated scan, peak catalogue, per-peak
 depth fit, plots) is in `examples/template_matching/zpipeline.py`; edit its
-USER INPUTS block for your target and run it.
+USER INPUTS block for your target and run it.  It needs version 1.1.0 or
+later of this package (`pip show bruce`); reinstall from the clone with
+`pip install .` to pick up `normalisation_model`.
 
 ## Data processing
 
@@ -127,6 +130,7 @@ We also provide functions to normalise and flatten data. I provide a median filt
 ```python
 flux_median_filter_10min = bruce.data_processing.median_filter(time, flux, bin_size=0.5/24/3)
 flux_convolved_10min = bruce.data_processing.convolve_1d(time, flux, bin_size=0.5/24/3)
+w = bruce.data.normalisation_model(time, flux, width=transit_width)   # both in one call, window = five transit widths
 ```
 
 -----------------

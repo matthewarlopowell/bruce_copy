@@ -3,8 +3,9 @@
 The steps follow Section 2 of the paper:
 
 1. Download the TESS light curves of the target (SPOC 2-min; QLP optional).
-2. Normalisation model w_n: a running median of length WINDOW_DAYS smoothed
-   by a boxcar of the same length (bruce.data.median_filter + convolve_1d).
+2. Normalisation model w_n: bruce.data.normalisation_model, a running median
+   smoothed by a boxcar of the same length; the length is bruce's default of
+   five transit widths (floor 0.2 d), or WINDOW_DAYS if set.
 3. Template width: radius_1 optimised on the reference event with k held at
    a placeholder (z is invariant to the template depth).
 4. Scan every sector with the fixed template at trial epochs W/20 apart
@@ -22,8 +23,8 @@ dispersion, ephemeris fitting and folding are included for the follow-up.
 
 Run:  python zpipeline.py   (edit the USER INPUTS block below)
 
-Requires this repository's bruce (template_match_snr and the FAP helpers)
-plus numpy, scipy, matplotlib and astropy.
+Requires this repository's bruce, version 1.1.0 or later (template_match_snr,
+the FAP helpers and normalisation_model), plus numpy, scipy, matplotlib and astropy.
 """
 
 import math
@@ -45,7 +46,7 @@ import bruce
 
 warnings.filterwarnings("ignore", category=UnitsWarning)
 
-VERSION = "2026-09-09d"
+VERSION = "2026-09-10"
 
 # ======================================================
 # USER INPUTS
@@ -64,13 +65,16 @@ INITIAL_K = 0.08  # placeholder depth for the scan (z is depth-invariant);
 PERIOD = 30  # assumed orbital period for the template (days)
 STEP = None  # trial-epoch spacing (days); None = W/20
 
-# Normalisation model: running median + boxcar, both of length WINDOW_DAYS.
-# Set it per target: at least 3 x the transit width, so the median never sees
-# the transit as the majority of its window, and shorter than the star's
-# variability timescale.  1 day is bruce's own default.  On TOI-201
-# (W = 4.9 h) 0.6 d was the most sensitive, 1.0 d costs ~20 per cent of z
-# and 1.2 d a third.
-WINDOW_DAYS = 1.0
+# Normalisation model: bruce.data.normalisation_model, a running median +
+# boxcar of the same length.  The length defaults to bruce's rule of
+# WINDOW_WIDTHS transit widths (floor 0.2 d), taken from the template in use;
+# set WINDOW_DAYS to a number to fix it instead.  Keep it at least 3 x the
+# transit width, so the median never sees the transit as the majority of its
+# window, and shorter than the star's variability timescale.  On TOI-201
+# (W = 4.9 h) 5 W is 1.0 d; 0.6 d was the most sensitive, 1.2 d cost a third
+# of z.
+WINDOW_WIDTHS = bruce.data.NORMALISATION_WINDOW_WIDTHS   # 5.0
+WINDOW_DAYS = None
 
 # Detection threshold: local (per trial epoch) false-alarm probability.
 # z_p = Phi^-1(1 - P_LOCAL): 1e-4 -> 3.72, 1e-6 -> 4.75, 1e-8 -> 5.61,
@@ -145,10 +149,12 @@ def get_reference_dataset(datasets, labels, reference_sector):
 
 
 def resolve_window(window_days, width_days):
-    """Check the manual flatten window (days) against the transit width."""
+    """Flatten window in days: bruce's default of WINDOW_WIDTHS transit
+    widths (floor 0.2 d, bruce.data.normalisation_window) when
+    `window_days` is None, otherwise the given value; warns if it is under
+    twice the transit width."""
     if window_days is None:
-        raise ValueError("WINDOW_DAYS must be set (days); keep it >= 3 x the "
-                         "transit width and shorter than the star's variability")
+        window_days = bruce.data.normalisation_window(width_days, window_widths=WINDOW_WIDTHS)
     window_days = float(window_days)
     if window_days < 2.0 * float(width_days):
         warnings.warn(f"flatten window {window_days:.2f} d is under twice the "
@@ -161,25 +167,15 @@ def flatten_lightcurve(time, flux, flux_err, window_days):
     """Estimate the out-of-transit baseline w_n; returns
     (flattened_flux, flattened_err, normalisation).
 
-    Running median of length `window_days` smoothed by a boxcar of the same
-    length (bruce.data.median_filter + convolve_1d), the paper's estimator
-    (Section 2): the median is robust to the sparse in-transit points and
-    absorbs several times less of the transit than a polynomial or
-    moving-average fit.  The window is a per-target choice (WINDOW_DAYS).
+    bruce.data.normalisation_model: a running median of length
+    `window_days` smoothed by a boxcar of the same length, the paper's
+    estimator (Section 2).  The median is robust to the sparse in-transit
+    points and absorbs several times less of the transit than a polynomial
+    or moving-average fit.  The length is bruce's default of five transit
+    widths (WINDOW_WIDTHS) or a per-target WINDOW_DAYS; bruce warns when a
+    window exceeds the 1024 points its median filter can hold.
     """
-    t64 = np.ascontiguousarray(time, dtype=np.float64)
-    f64 = np.ascontiguousarray(flux, dtype=np.float64)
-    cadence = np.nanmedian(np.diff(t64))
-    if window_days / cadence > 1024:
-        # bruce's C median filter keeps at most 1024 points per window and
-        # silently truncates the rest from the right-hand side
-        warnings.warn(
-            f"median flatten: window {window_days:.2f} d spans "
-            f"{window_days / cadence:.0f} cadences but bruce's median_filter "
-            "uses at most 1024 points per window (truncated one-sidedly); "
-            "bin the light curve or shorten the window.")
-    normalisation = bruce.data.median_filter(t64, f64, float(window_days))
-    normalisation = bruce.data.convolve_1d(t64, normalisation, float(window_days))
+    normalisation = bruce.data.normalisation_model(time, flux, window=float(window_days))
     return flux / normalisation, flux_err / normalisation, normalisation
 
 

@@ -54,7 +54,7 @@ bruce_c_module = Extension(
 
 setup(
     name="bruce",
-    version="1.0.0",
+    version="1.1.0",
     description="A fast-as-hell binary star model using NumPy-C API with OpenMP",
     packages=find_packages(where="src"),
     package_dir={"": "src"},

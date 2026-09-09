@@ -183,7 +183,9 @@ def get_snr_height_from_fap(p_value=(1e-2, 1e-3, 1e-4, 1e-9), n_independent=1):
     The last default entry, 1e-9 (z_p ~ 6.00), is the recommended local
     FAP for real survey data: non-Gaussian systematics populate the
     z ~ 5-6 band, and 1e-9 sits just above it with little sensitivity
-    cost.
+    cost.  Its companion default is the normalisation model of
+    ``bruce.data.normalisation_model`` (running median + boxcar over five
+    transit widths, floor 0.2 d).
 
     With the default ``n_independent=1`` the height is LOCAL (per trial
     epoch) -- threshold there and the expected number of false peaks in a

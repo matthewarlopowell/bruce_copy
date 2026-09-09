@@ -1,3 +1,4 @@
+import warnings
 import bruce_c, numpy as np
 from scipy.signal import savgol_filter
 from scipy.ndimage.filters import maximum_filter, median_filter
@@ -6,10 +7,76 @@ from scipy.interpolate import UnivariateSpline
 ###############################################################
 #                  bruce_c wrappers                           #
 ###############################################################
-def median_filter(time, flux, bin_size=0.5/24/3) : return bruce_c.median_filter(time, flux, bin_size)
+MEDIAN_FILTER_MAX_POINTS = 1024      # bruce_c MAX_WINDOW_SIZE: points kept per median window
+NORMALISATION_WINDOW_WIDTHS = 5.0    # default normalisation window = five transit widths ...
+NORMALISATION_WINDOW_FLOOR = 0.2     # ... but never shorter than 0.2 d
+
+
+def median_filter(time, flux, bin_size=0.5/24/3):
+    """Running median of ``flux`` over a window of ``bin_size`` (same units
+    as ``time``; total length, symmetric about each point).  The C kernel
+    keeps at most MEDIAN_FILTER_MAX_POINTS points per window and silently
+    drops the rest from the right-hand side, so a warning is issued when a
+    window would hold more than that (bin the data or shorten the window)."""
+    time = np.asarray(time, dtype=np.float64)
+    if time.size > 1:
+        n_points = float(bin_size) / float(np.nanmedian(np.diff(time)))
+        if n_points > MEDIAN_FILTER_MAX_POINTS:
+            warnings.warn(
+                "median_filter: a window of %g spans %.0f cadences but the C "
+                "kernel uses at most %d points per window (truncated "
+                "one-sidedly); bin the data or shorten the window."
+                % (bin_size, n_points, MEDIAN_FILTER_MAX_POINTS), stacklevel=2)
+    return bruce_c.median_filter(time, flux, bin_size)
+
+
 def convolve_1d(time, flux, bin_size=0.5/24/3) : return bruce_c.convolve_1d(time, flux, bin_size)
 def bin_data(time, flux, bin_size=0.5/24/3) : return bruce_c.bin_data(time, flux, bin_size)
 def check_proximity_of_timestamps(time_trial, time, width) : return bruce_c.check_proximity_of_timestamps(time_trial, time, width)
+
+
+def normalisation_window(width, window_widths=NORMALISATION_WINDOW_WIDTHS,
+                         floor=NORMALISATION_WINDOW_FLOOR):
+    """Default length (days) of the normalisation window for a transit of
+    duration ``width`` (days): max(floor, window_widths * width).
+
+    Five transit widths keep the in-transit points well under half of the
+    median window (the median is robust while they are a minority) and is
+    the default of the search pipeline and of the paper's simulations.
+    Shorten it for stars whose variability timescale is shorter, but keep
+    it at three widths or more.
+    """
+    return max(float(floor), float(window_widths) * float(width))
+
+
+def normalisation_model(time, flux, width=None, window=None,
+                        window_widths=NORMALISATION_WINDOW_WIDTHS,
+                        floor=NORMALISATION_WINDOW_FLOOR):
+    """Out-of-transit baseline w_n: a running median of length ``window``
+    smoothed by a boxcar of the same length (median_filter then
+    convolve_1d).
+
+    ``window`` (days) defaults to normalisation_window(width); pass
+    ``window`` explicitly to fix the length.  The median is robust to the
+    sparse in-transit points, so it absorbs several times less of the
+    transit and about half as much noise variance as a moving average of
+    the same length.  Warns if the window is under twice the transit width.
+    """
+    if window is None:
+        if width is None:
+            raise ValueError("normalisation_model needs `width` (transit "
+                             "duration, days) or an explicit `window` (days)")
+        window = normalisation_window(width, window_widths, floor)
+    window = float(window)
+    if width is not None and window < 2.0 * float(width):
+        warnings.warn(
+            "normalisation window %.3f d is under twice the transit width "
+            "(%.1f h): the median will follow the transit; use >= 3 widths."
+            % (window, float(width) * 24.0), stacklevel=2)
+    t64 = np.ascontiguousarray(time, dtype=np.float64)
+    f64 = np.ascontiguousarray(flux, dtype=np.float64)
+    track = median_filter(t64, f64, window)
+    return convolve_1d(t64, track, window)
 
 
 
